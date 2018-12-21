@@ -1,0 +1,68 @@
+#ifdef CHANGED
+
+#include "copyright.h"
+#include "system.h"
+#include "synchconsole.h"
+#include "synch.h"
+
+static Semaphore *readAvail;
+static Semaphore *writeDone;
+
+static void ReadAvailHandler(void* arg) { (void) arg; readAvail->V(); }
+static void WriteDoneHandler(void* arg) { (void) arg; writeDone->V(); }
+
+SynchConsole::SynchConsole(const char* in, const char *out)
+{
+	readAvail = new Semaphore("read avail", 0);
+	writeDone = new Semaphore("write done", 0);
+	console = new Console(in, out, ReadAvailHandler, WriteDoneHandler, 0);
+}
+
+SynchConsole::~SynchConsole()
+{
+	delete console;
+	delete writeDone;
+	delete readAvail;
+}
+
+void SynchConsole::SynchPutChar(int ch)
+{
+  
+  unsigned char c;
+    ASSERT(putBusy == FALSE);
+    if (ch < 0x80 || strcmp(nl_langinfo(CODESET),"UTF-8")) {
+	/* Not UTF-8 or ASCII, assume 8bit locale */
+	c = ch;
+        WriteFile(writeFileNo, &c, sizeof(c));
+    } else if (ch < 0x100) {
+	/* Non-ASCII UTF-8, thus two bytes */
+	c = ((ch & 0xc0) >> 6) | 0xc0;
+        WriteFile(writeFileNo, &c, sizeof(c));
+	c = (ch & 0x3f) | 0x80;
+        WriteFile(writeFileNo, &c, sizeof(c));
+    } /* Else not latin1, drop */
+    putBusy = TRUE;
+    interrupt->Schedule(ConsoleWriteDone, this, ConsoleTime,
+					ConsoleWriteInt);
+    writeDone->P();
+}
+
+int SynchConsole::SynchGetChar()
+{
+  readAvail->P();
+  int ch = incoming;
+  incoming = EOF;
+  return ch;
+}
+
+void SynchConsole::SynchPutString(const char s[])
+{
+// ...
+}
+
+void SynchConsole::SynchGetString(char* s, int n)
+{
+// ...
+}
+
+#endif // CHANGED
